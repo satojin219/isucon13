@@ -202,18 +202,18 @@ func searchLivestreamsHandler(c echo.Context) error {
 			livestreamIDs = append(livestreamIDs, keyTaggedLivestream.LivestreamID)
 		}
 
-		// 一括取得クエリ
-		var livestreamModels []*LivestreamModel
+
 		if len(livestreamIDs) > 0 { // IDリストが空でないことを確認
 			query, params, err := sqlx.In("SELECT * FROM livestreams WHERE id IN (?)", livestreamIDs)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to construct IN query: "+err.Error())
 			}
-			// クエリのプレースホルダをDBに適用
-			query = tx.Rebind(query)
+
 			if err := tx.SelectContext(ctx, &livestreamModels, query, params...); err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreamModels: "+err.Error())
 			}
+		} else {
+			return c.JSON(http.StatusOK, []Livestream{})
 		}
 	} else {
 		// 検索条件なし
