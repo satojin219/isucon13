@@ -202,7 +202,6 @@ func searchLivestreamsHandler(c echo.Context) error {
 			livestreamIDs = append(livestreamIDs, keyTaggedLivestream.LivestreamID)
 		}
 
-
 		if len(livestreamIDs) > 0 { // IDリストが空でないことを確認
 			query, params, err := sqlx.In("SELECT * FROM livestreams WHERE id IN (?) ORDER BY id DESC", livestreamIDs)
 			if err != nil {
@@ -504,21 +503,24 @@ func fillLivestreamResponse(ctx context.Context, tx *sqlx.Tx, livestreamModel Li
 		return Livestream{}, err
 	}
 
-	var livestreamTagModels []*LivestreamTagModel
-	if err := tx.SelectContext(ctx, &livestreamTagModels, "SELECT * FROM livestream_tags WHERE livestream_id = ?", livestreamModel.ID); err != nil {
+	var tagData []struct {
+		TagID   int64  `db:"id"`
+		TagName string `db:"name"`
+	}
+	query := `
+		SELECT t.id, t.name
+		FROM livestream_tags lt
+		INNER JOIN tags t ON lt.tag_id = t.id
+		WHERE lt.livestream_id = ?`
+	if err := tx.SelectContext(ctx, &tagData, query, livestreamModel.ID); err != nil {
 		return Livestream{}, err
 	}
 
-	tags := make([]Tag, len(livestreamTagModels))
-	for i := range livestreamTagModels {
-		tagModel := TagModel{}
-		if err := tx.GetContext(ctx, &tagModel, "SELECT * FROM tags WHERE id = ?", livestreamTagModels[i].TagID); err != nil {
-			return Livestream{}, err
-		}
-
+	tags := make([]Tag, len(tagData))
+	for i, tag := range tagData {
 		tags[i] = Tag{
-			ID:   tagModel.ID,
-			Name: tagModel.Name,
+			ID:   tag.TagID,
+			Name: tag.TagName,
 		}
 	}
 
