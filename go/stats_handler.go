@@ -160,17 +160,16 @@ func getUserStatisticsHandler(c echo.Context) error {
 	if err := tx.SelectContext(ctx, &livestreams, "SELECT * FROM livestreams WHERE user_id = ?", user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams: "+err.Error())
 	}
-
 	statsQuery := `
-		SELECT
-			l.id AS livestream_id,
-			COUNT(lc.id) AS total_livecomments,
-			COALESCE(SUM(lc.tip), 0) AS total_tip
-		FROM livestreams l
-		LEFT JOIN livecomments lc ON lc.livestream_id = l.id
+    SELECT
+        l.id AS livestream_id,
+        COUNT(lc.id) AS total_livecomments,
+        COALESCE(SUM(lc.tip), 0) AS total_tip
+    FROM livestreams l
+    INNER JOIN livecomments lc ON lc.livestream_id = l.id
 		WHERE l.user_id = ?
-		GROUP BY l.id;
-	`
+    GROUP BY l.id;
+`
 
 	if err := tx.SelectContext(ctx, livestreamStats, statsQuery, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams stats: "+err.Error())
