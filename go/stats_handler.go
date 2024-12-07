@@ -126,7 +126,6 @@ func getUserStatisticsHandler(c echo.Context) error {
 	// スコアでソート
 	sort.Sort(ranking)
 
-
 	var rank int64 = 1
 	for i := len(ranking) - 1; i >= 0; i-- {
 		entry := ranking[i]
@@ -151,19 +150,41 @@ func getUserStatisticsHandler(c echo.Context) error {
 	var totalLivecomments int64
 	var totalTip int64
 	var livestreams []*LivestreamModel
+	type LivestreamStats struct {
+		LivestreamID      int64 `db:"livestream_id"`
+		TotalLivecomments int64 `db:"total_livecomments"`
+		TotalTip          int64 `db:"total_tip"`
+	}
+	var livestreamStats = []LivestreamStats{}
+
 	if err := tx.SelectContext(ctx, &livestreams, "SELECT * FROM livestreams WHERE user_id = ?", user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams: "+err.Error())
 	}
 
-	for _, livestream := range livestreams {
-		var livecomments []*LivecommentModel
-		if err := tx.SelectContext(ctx, &livecomments, "SELECT * FROM livecomments WHERE livestream_id = ?", livestream.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livecomments: "+err.Error())
-		}
+	statsQuery := `
+		SELECT
+			l.id AS livestream_id,
+			COUNT(lc) AS total_livecomments,
+			SUM(lc.tip) AS total_tip
+		FROM livestreams l
+		INNER JOIN livecomments lc ON lc.livestream_id = l.id
+		WHERE l.user_id = ?
+		GROUP BY l.id;
+	`
 
-		for _, livecomment := range livecomments {
-			totalTip += livecomment.Tip
-			totalLivecomments++
+	if err := tx.SelectContext(ctx, livestreamStats, statsQuery, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams stats: "+err.Error())
+	}
+
+	livestreamStatsMap := make(map[int64]LivestreamStats)
+	for _, stat := range livestreamStats {
+		livestreamStatsMap[stat.LivestreamID] = stat
+	}
+
+	for _, livestream := range livestreams {
+		if stat, exists := livestreamStatsMap[livestream.ID]; exists {
+			totalLivecomments += stat.TotalLivecomments
+			totalTip += stat.TotalTip
 		}
 	}
 
