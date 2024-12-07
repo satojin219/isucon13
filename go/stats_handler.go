@@ -164,10 +164,10 @@ func getUserStatisticsHandler(c echo.Context) error {
 	statsQuery := `
 		SELECT
 			l.id AS livestream_id,
-			COUNT(lc) AS total_livecomments,
-			SUM(lc.tip) AS total_tip
+			COUNT(lc.id) AS total_livecomments,
+			COALESCE(SUM(lc.tip), 0) AS total_tip
 		FROM livestreams l
-		INNER JOIN livecomments lc ON lc.livestream_id = l.id
+		LEFT JOIN livecomments lc ON lc.livestream_id = l.id
 		WHERE l.user_id = ?
 		GROUP BY l.id;
 	`
