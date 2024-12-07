@@ -120,6 +120,7 @@ func initializeHandler(c echo.Context) error {
 }
 
 var ImageCache = cache.NewCache[[]byte]()
+var ThemeCache = cache.NewCache[ThemeModel]()
 
 func main() {
 	e := echo.New()

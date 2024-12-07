@@ -405,12 +405,21 @@ func verifyUserSession(c echo.Context) error {
 }
 
 func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (User, error) {
-	themeModel := ThemeModel{}
-	if err := tx.GetContext(ctx, &themeModel, "SELECT * FROM themes WHERE user_id = ?", userModel.ID); err != nil {
-		return User{}, err
-	}
-
 	cacheKey := strconv.FormatInt(userModel.ID, 10)
+	themeModel := ThemeModel{}
+	if cachedTheme, found := ThemeCache.Get(cacheKey); found {
+		themeModel = cachedTheme
+	} else {
+		if err := tx.GetContext(ctx, &themeModel, "SELECT * FROM themes WHERE user_id = ?", userModel.ID); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return User{}, err
+			}
+			if err != nil {
+				return User{}, err
+			}
+		}
+		ThemeCache.Set(cacheKey, themeModel)
+	}
 
 	var image []byte
 	if cachedImage, found := ImageCache.Get(cacheKey); found {
