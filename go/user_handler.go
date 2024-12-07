@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,6 +104,11 @@ func getIconHandler(c echo.Context) error {
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user: "+err.Error())
 	}
+	userID := strconv.FormatInt(user.ID, 10)
+	if cachedImage, found := ImageCache.Get(userID); found {
+		image := cachedImage
+		return c.Blob(http.StatusOK, "image/png", image)
+	}
 
 	var image []byte
 	if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", user.ID); err != nil {
@@ -112,7 +118,7 @@ func getIconHandler(c echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get user icon: "+err.Error())
 		}
 	}
-
+	ImageCache.Set(userID, image)
 	return c.Blob(http.StatusOK, "image/jpeg", image)
 }
 
@@ -404,16 +410,25 @@ func fillUserResponse(ctx context.Context, tx *sqlx.Tx, userModel UserModel) (Us
 		return User{}, err
 	}
 
+	cacheKey := strconv.FormatInt(userModel.ID, 10)
+
 	var image []byte
-	if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return User{}, err
+	if cachedImage, found := ImageCache.Get(cacheKey); found {
+		image = cachedImage
+	} else {
+		if err := tx.GetContext(ctx, &image, "SELECT image FROM icons WHERE user_id = ?", userModel.ID); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return User{}, err
+			}
+			image, err = os.ReadFile(fallbackImage)
+			if err != nil {
+				return User{}, err
+			}
 		}
-		image, err = os.ReadFile(fallbackImage)
-		if err != nil {
-			return User{}, err
-		}
+
+		ImageCache.Set(cacheKey, image)
 	}
+
 	iconHash := sha256.Sum256(image)
 
 	user := User{

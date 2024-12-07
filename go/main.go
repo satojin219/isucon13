@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/gorilla/sessions"
+	cache "github.com/isucon/isucon13/webapp/go/cache"
 	"github.com/labstack/echo-contrib/session"
 	echolog "github.com/labstack/gommon/log"
 )
@@ -117,6 +118,8 @@ func initializeHandler(c echo.Context) error {
 		Language: "golang",
 	})
 }
+
+var ImageCache = cache.NewCache[[]byte]()
 
 func main() {
 	e := echo.New()
