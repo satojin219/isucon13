@@ -150,42 +150,32 @@ func getUserStatisticsHandler(c echo.Context) error {
 	var totalLivecomments int64
 	var totalTip int64
 	var livestreams []*LivestreamModel
-	type LivestreamStats struct {
-		LivestreamID      int64 `db:"livestream_id"`
-		TotalLivecomments int64 `db:"total_livecomments"`
-		TotalTip          int64 `db:"total_tip"`
-	}
-	var livestreamStats = []LivestreamStats{}
 
 	if err := tx.SelectContext(ctx, &livestreams, "SELECT * FROM livestreams WHERE user_id = ?", user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams: "+err.Error())
 	}
-	statsQuery := `
-    SELECT
-        l.id AS livestream_id,
-        COUNT(lc.id) AS total_livecomments,
-        COALESCE(SUM(lc.tip), 0) AS total_tip
-    FROM livestreams l
-    INNER JOIN livecomments lc ON lc.livestream_id = l.id
-		WHERE l.user_id = ?
-    GROUP BY l.id;
-`
 
-	if err := tx.SelectContext(ctx, livestreamStats, statsQuery, user.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestreams stats: "+err.Error())
+	query = `
+    SELECT 
+        COALESCE(COUNT(lc.id), 0) as total_comments,
+        COALESCE(SUM(lc.tip), 0) as total_tip
+    FROM livestreams ls
+    LEFT JOIN livecomments lc ON ls.id = lc.livestream_id
+    WHERE ls.user_id = ?
+    GROUP BY ls.user_id`
+
+	type Result struct {
+		TotalComments int64 `db:"total_comments"`
+		TotalTip      int64 `db:"total_tip"`
 	}
 
-	livestreamStatsMap := make(map[int64]LivestreamStats)
-	for _, stat := range livestreamStats {
-		livestreamStatsMap[stat.LivestreamID] = stat
+	var result Result
+	if err := tx.GetContext(ctx, &result, query, user.ID); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get livestream stats: "+err.Error())
 	}
 
-	for _, livestream := range livestreams {
-		if stat, exists := livestreamStatsMap[livestream.ID]; exists {
-			totalLivecomments += stat.TotalLivecomments
-			totalTip += stat.TotalTip
-		}
-	}
+	totalLivecomments = result.TotalComments
+	totalTip = result.TotalTip
 
 	// 合計視聴者数
 	var viewersCount int64
